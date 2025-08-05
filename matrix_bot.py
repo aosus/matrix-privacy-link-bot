@@ -199,6 +199,29 @@ def find_links_in_text(text):
     return url_pattern.findall(text)
 
 
+def find_links_excluding_quotes(text):
+    """Finds URLs in text but excludes URLs that appear in quoted sections.
+    
+    Matrix replies often include quoted content in the message body using fallback format:
+    > <@user:example.com> Original message with URLs
+    
+    This function excludes URLs that appear in such quoted sections (lines starting with '>').
+    """
+    lines = text.split('\n')
+    non_quoted_lines = []
+    
+    for line in lines:
+        # Skip lines that start with '>' (Matrix quote format)
+        # Also handle lines that start with whitespace + '>' 
+        stripped = line.lstrip()
+        if not stripped.startswith('>'):
+            non_quoted_lines.append(line)
+    
+    # Join the non-quoted lines and find links in them
+    non_quoted_text = '\n'.join(non_quoted_lines)
+    return find_links_in_text(non_quoted_text)
+
+
 async def main():
     load_dotenv()
     load_config_data()
@@ -286,7 +309,7 @@ async def main():
             logger.debug("Message is from self, ignoring.")
             return
 
-        found_links = find_links_in_text(event.body)
+        found_links = find_links_excluding_quotes(event.body)
         if not found_links:
             logger.debug("No links found in message.")
             return
