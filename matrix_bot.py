@@ -199,6 +199,88 @@ def find_links_in_text(text):
     return url_pattern.findall(text)
 
 
+def extract_reply_content_from_formatted_body(formatted_body):
+    """Extract actual reply content from Matrix formatted_body, excluding quoted content.
+    
+    Matrix replies include quoted content wrapped in <mx-reply> tags.
+    This function removes the <mx-reply> section and returns just the actual reply.
+    """
+    if not formatted_body:
+        return None
+        
+    # Remove <mx-reply>...</mx-reply> section (including nested content)
+    # Use DOTALL flag to match across newlines
+    reply_pattern = r'<mx-reply>.*?</mx-reply>'
+    clean_content = re.sub(reply_pattern, '', formatted_body, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Extract URLs from href attributes before removing HTML tags
+    href_pattern = r'href=(["\'])([^"\']*)\1'
+    href_urls = re.findall(href_pattern, clean_content, re.IGNORECASE)
+    
+    # Clean up HTML tags but preserve the text content
+    clean_content = re.sub(r'<[^>]+>', '', clean_content)
+    
+    # Add back the URLs that were in href attributes
+    if href_urls:
+        url_list = [url[1] for url in href_urls]  # url[1] is the actual URL from the regex groups
+        clean_content = clean_content.strip() + ' ' + ' '.join(url_list)
+    
+    return clean_content.strip()
+
+
+def has_reply_relationship(event_source):
+    """Check if the event is a reply by looking for m.relates_to."""
+    if not isinstance(event_source, dict):
+        return False
+    content = event_source.get('content', {})
+    relates_to = content.get('m.relates_to', {})
+    return 'm.in_reply_to' in relates_to
+
+
+def get_content_for_link_processing(event):
+    """Get the appropriate content for link processing based on message type.
+    
+    For replies: Extract content excluding quoted portions using structured data.
+    For regular messages: Use the message body directly.
+    """
+    # Check if this is a reply using structured data
+    if has_reply_relationship(event.source):
+        # For replies, try to extract clean content from formatted_body
+        if hasattr(event, 'formatted_body') and event.formatted_body:
+            clean_content = extract_reply_content_from_formatted_body(event.formatted_body)
+            if clean_content:
+                return clean_content
+        
+        # Fallback to quote-based filtering if no formatted_body
+        return find_links_excluding_quotes_fallback(event.body)
+    
+    # For non-replies, process the entire message body
+    return event.body
+
+
+def find_links_excluding_quotes_fallback(text):
+    """Fallback method: Finds URLs in text but excludes URLs from quoted sections.
+    
+    This is used when formatted_body is not available.
+    Matrix replies often include quoted content in the message body using fallback format:
+    > <@user:example.com> Original message with URLs
+    
+    This function excludes URLs that appear in such quoted sections (lines starting with '>').
+    """
+    lines = text.split('\n')
+    non_quoted_lines = []
+    
+    for line in lines:
+        # Skip lines that start with '>' (Matrix quote format)
+        # Also handle lines that start with whitespace + '>' 
+        stripped = line.lstrip()
+        if not stripped.startswith('>'):
+            non_quoted_lines.append(line)
+    
+    # Join the non-quoted lines and return the text for processing
+    return '\n'.join(non_quoted_lines)
+
+
 async def main():
     load_dotenv()
     load_config_data()
@@ -286,7 +368,9 @@ async def main():
             logger.debug("Message is from self, ignoring.")
             return
 
-        found_links = find_links_in_text(event.body)
+        # Get the appropriate content for link processing
+        content_to_process = get_content_for_link_processing(event)
+        found_links = find_links_in_text(content_to_process)
         if not found_links:
             logger.debug("No links found in message.")
             return
