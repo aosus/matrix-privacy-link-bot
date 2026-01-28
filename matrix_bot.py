@@ -183,16 +183,15 @@ def find_links_in_text(text):
     # 1. Optional http:// or https://
     # 2. Optional www.
     # 3. A domain name part (sequence of subdomain.domain.tld)
-    # 4. A path part (anything after / that's not whitespace)
-    # It's not perfect and might match things like "file.py" if not careful,
-    # but it's more inclusive. We rely on mk_newlinks to validate if it's a known service.
+    # 4. A path part (only valid URL characters: ASCII letters, digits, and URL-safe special chars)
+    # The key fix: Use a character class that only includes valid URL path characters,
+    # which excludes non-ASCII text like Arabic, Chinese, etc.
     url_pattern = re.compile(
         r'(?:(?:http[s]?://|ftp://|www\.)|(?:(?!(?:http[s]?|ftp)://|www\.))(?=[a-zA-Z0-9]))'  # Scheme or www, or start of domain
         r'(?:[a-zA-Z0-9\-]+\.)+(?:[a-zA-Z]{2,})'  # domain.tld
         r'(?::[0-9]+)?'  # Optional port
-        r'(?:/[^\s]*)?'  # Optional path
-        r'(?=\b|[\s"\'<>]|$)', # Ensure it's a boundary or end of string to avoid matching parts of words
-        re.IGNORECASE  # Make matching case-insensitive
+        r'(?:/[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]*)?',  # Optional path with valid URL characters only
+        re.IGNORECASE | re.ASCII  # Make matching case-insensitive and use ASCII character classes
     )
     # Previous simpler regex for http(s) only:
     # url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
@@ -213,17 +212,12 @@ def extract_reply_content_from_formatted_body(formatted_body):
     reply_pattern = r'<mx-reply>.*?</mx-reply>'
     clean_content = re.sub(reply_pattern, '', formatted_body, flags=re.DOTALL | re.IGNORECASE)
     
-    # Extract URLs from href attributes before removing HTML tags
-    href_pattern = r'href=(["\'])([^"\']*)\1'
-    href_urls = re.findall(href_pattern, clean_content, re.IGNORECASE)
-    
     # Clean up HTML tags but preserve the text content
+    # This will extract the text content including any URLs that are in the link text
     clean_content = re.sub(r'<[^>]+>', '', clean_content)
     
-    # Add back the URLs that were in href attributes
-    if href_urls:
-        url_list = [url[1] for url in href_urls]  # url[1] is the actual URL from the regex groups
-        clean_content = clean_content.strip() + ' ' + ' '.join(url_list)
+    # Note: We don't add URLs from href attributes back because they're already
+    # in the link text, and adding them again causes duplicates
     
     return clean_content.strip()
 
