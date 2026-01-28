@@ -6,18 +6,28 @@ characters like Arabic text that might follow the URL.
 """
 import re
 import sys
+import os
 
+# Add the parent directory to the path to import from matrix_bot
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-def find_links_in_text(text):
-    """Copy of the function from matrix_bot.py for testing."""
-    url_pattern = re.compile(
-        r'(?:(?:http[s]?://|ftp://|www\.)|(?:(?!(?:http[s]?|ftp)://|www\.))(?=[a-zA-Z0-9]))'
-        r'(?:[a-zA-Z0-9\-]+\.)+(?:[a-zA-Z]{2,})'
-        r'(?::[0-9]+)?'
-        r'(?:/[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]*)?',
-        re.IGNORECASE | re.ASCII
-    )
-    return url_pattern.findall(text)
+# Import the actual function from matrix_bot.py to ensure we're testing the real implementation
+# Note: This will fail if dependencies like 'dotenv' and 'nio' are not installed,
+# so we provide a fallback implementation for testing purposes
+try:
+    from matrix_bot import find_links_in_text
+except ImportError:
+    # Fallback: Define the function here if imports fail (e.g., missing dependencies)
+    def find_links_in_text(text):
+        """Fallback implementation matching matrix_bot.py for testing when dependencies are missing."""
+        url_pattern = re.compile(
+            r'(?:(?:http[s]?://|ftp://|www\.)|(?:(?!(?:http[s]?|ftp)://|www\.))(?=[a-zA-Z0-9]))'
+            r'(?:[a-zA-Z0-9\-]+\.)+(?:[a-zA-Z]{2,})'
+            r'(?::[0-9]+)?'
+            r'(?:/[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=%]*)?',
+            re.IGNORECASE | re.ASCII
+        )
+        return url_pattern.findall(text)
 
 
 def test_plain_text_with_arabic():
